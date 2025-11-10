@@ -1,0 +1,50 @@
+# Sports Stats Scraper Configuration
+
+# Scraping settings
+scraping:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  request_delay: 3  # seconds between requests (be polite!)
+  timeout: 30  # request timeout in seconds
+  max_retries: 3
+  retry_delay: 5  # seconds to wait between retries
+
+# Cache settings
+cache:
+  enabled: true
+  directory: "./cache"
+  current_season_ttl: 86400  # 24 hours in seconds
+  historical_ttl: 2592000  # 30 days in seconds
+  playoff_ttl: 604800  # 7 days in seconds
+
+# Logging settings
+logging:
+  enabled: true
+  directory: "./logs"
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  max_file_size: 10485760  # 10MB
+  backup_count: 5
+
+# Default preferences
+defaults:
+  sport: "NFL"  # NFL or MLB
+  stat_type: "season"  # season, career, game_logs, playoffs
+  stat_category: "basic"  # basic or advanced
+  export_format: "csv"  # csv or json
+
+# Favorite players (add your favorites here)
+favorites:
+  nfl: []
+    # - name: "Patrick Mahomes"
+    #   team: "Kansas City Chiefs"
+    #   position: "QB"
+  mlb: []
+    # - name: "Mike Trout"
+    #   team: "Los Angeles Angels"
+    #   position: "OF"
+
+# Display settings
+display:
+  table_style: "rich"  # rich or simple
+  color_comparisons: true
+  show_summary: true
+  max_rows_display: 100
