@@ -58,7 +58,10 @@ def show():
             if not results:
                 st.warning(f"No players found matching '{player_name}'")
             else:
-                st.session_state.temp_search_results = results
+                # Store results without clearing previous searches
+                if 'temp_search_results' not in st.session_state:
+                    st.session_state.temp_search_results = []
+                st.session_state.temp_search_results = results  # Update with latest search
                 st.session_state.comparison_sport_type = sport
 
     # Display search results for selection
@@ -80,15 +83,14 @@ def show():
                         if len(st.session_state.comparison_players) < 5:
                             st.session_state.comparison_players.append(player)
                             st.success(f"Added {player['name']}")
-                            # Clear temp results
-                            st.session_state.temp_search_results = None
+                            # Keep temp results so user can search for more players
                             st.rerun()
                         else:
                             st.error("Maximum 5 players allowed")
                     else:
                         st.warning("Player already added")
 
-        if st.button("❌ Cancel"):
+        if st.button("❌ Cancel Search Results"):
             st.session_state.temp_search_results = None
             st.rerun()
 
@@ -121,12 +123,13 @@ def show():
             with col1:
                 stat_type = st.selectbox(
                     "Stats Type",
-                    ["Season Stats", "Career Stats"],
-                    key="comparison_stat_type"
+                    ["Game Logs", "Season Stats", "Career Stats"],
+                    key="comparison_stat_type",
+                    index=0  # Default to Game Logs
                 )
 
             with col2:
-                if stat_type == "Season Stats":
+                if stat_type in ["Season Stats", "Game Logs"]:
                     current_year = datetime.now().year
                     year = st.number_input(
                         "Year",
@@ -139,15 +142,23 @@ def show():
                     year = None
 
             with col3:
-                stat_category = st.selectbox(
-                    "Category",
-                    ["Basic", "Advanced"],
-                    key="comparison_category"
-                )
+                if stat_type != "Game Logs":
+                    stat_category = st.selectbox(
+                        "Category",
+                        ["Basic", "Advanced"],
+                        key="comparison_category"
+                    )
+                else:
+                    stat_category = "basic"
+                    st.markdown("&nbsp;")  # Spacing
+                    st.info("Game Logs selected")
 
             # Compare button
             if st.button("📊 Compare Players", type="primary", use_container_width=True):
-                compare_players(sport, year, stat_category.lower())
+                if stat_type == "Game Logs":
+                    compare_game_logs(sport, year)
+                else:
+                    compare_players(sport, year, stat_category.lower())
 
         else:
             st.info("Add at least 2 players to compare")
@@ -200,10 +211,148 @@ def compare_players(sport, year, stat_category):
         st.error("Could not fetch stats for enough players to compare")
 
 
+def compare_game_logs(sport, year):
+    """Fetch and compare player game logs."""
+    scraper = st.session_state.nfl_scraper if sport == "NFL" else st.session_state.mlb_scraper
+
+    game_logs_data = {}
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i, player in enumerate(st.session_state.comparison_players):
+        status_text.text(f"Fetching game logs for {player['name']}...")
+        progress_bar.progress((i + 1) / len(st.session_state.comparison_players))
+
+        try:
+            logs = scraper.get_game_logs(player['player_id'], year)
+
+            if logs:
+                game_logs_data[player['name']] = logs
+            else:
+                st.warning(f"Could not fetch game logs for {player['name']}")
+
+        except Exception as e:
+            st.error(f"Error fetching game logs for {player['name']}: {str(e)}")
+
+    progress_bar.empty()
+    status_text.empty()
+
+    if len(game_logs_data) >= 2:
+        st.session_state.comparison_results = {
+            'type': 'game_logs',
+            'data': game_logs_data,
+            'year': year,
+            'sport': sport
+        }
+        st.success(f"Successfully compared game logs for {len(game_logs_data)} players!")
+    else:
+        st.error("Could not fetch game logs for enough players to compare")
+
+
+def display_game_logs_comparison(comparison_info):
+    """Display game logs comparison for multiple players."""
+    game_logs_data = comparison_info['data']
+    player_names = list(game_logs_data.keys())
+    year = comparison_info['year']
+
+    st.markdown(f"### Game Logs Comparison ({year})")
+
+    # Create tabs for each player
+    tabs = st.tabs(player_names)
+
+    for i, player_name in enumerate(player_names):
+        with tabs[i]:
+            logs = game_logs_data[player_name]
+
+            if not logs:
+                st.warning(f"No game logs available for {player_name}")
+                continue
+
+            # Convert to DataFrame
+            df = pd.DataFrame(logs)
+
+            # Format column names
+            df.columns = [col.replace('_', ' ').title() for col in df.columns]
+
+            # Display the table
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                height=500
+            )
+
+            st.info(f"Total Games: {len(logs)}")
+
+    # Create aggregate comparison
+    st.markdown("---")
+    st.markdown("### 📊 Aggregate Stats Comparison")
+
+    # Calculate totals/averages for each player
+    aggregate_stats = {}
+
+    for player_name, logs in game_logs_data.items():
+        if not logs:
+            continue
+
+        # Convert to DataFrame for easier aggregation
+        df = pd.DataFrame(logs)
+
+        # Calculate numeric aggregates
+        numeric_cols = df.select_dtypes(include=['int64', 'float64', 'int32', 'float32']).columns
+        player_agg = {}
+
+        for col in numeric_cols:
+            # Skip columns that shouldn't be summed
+            skip_cols = ['week', 'game', 'year', 'age']
+            if any(skip in col.lower() for skip in skip_cols):
+                continue
+
+            try:
+                total = df[col].sum()
+                avg = df[col].mean()
+                player_agg[f"{col}_total"] = total
+                player_agg[f"{col}_avg"] = round(avg, 2)
+            except:
+                pass
+
+        player_agg['games_played'] = len(logs)
+        aggregate_stats[player_name] = player_agg
+
+    if aggregate_stats:
+        # Display aggregate comparison
+        agg_df = pd.DataFrame(aggregate_stats).T
+        agg_df.index.name = 'Player'
+
+        st.dataframe(
+            agg_df,
+            use_container_width=True,
+            height=400
+        )
+
+    # Export options
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("💾 Export All Game Logs as CSV", use_container_width=True):
+            export_game_logs_comparison(comparison_info, 'csv')
+
+    with col2:
+        if st.button("💾 Export All Game Logs as JSON", use_container_width=True):
+            export_game_logs_comparison(comparison_info, 'json')
+
+
 def display_comparison(comparison_info):
     """Display player comparison results."""
     st.markdown("---")
     st.markdown("## 📊 Comparison Results")
+
+    # Check if this is game logs comparison
+    if comparison_info.get('type') == 'game_logs':
+        display_game_logs_comparison(comparison_info)
+        return
 
     comparison_data = comparison_info['data']
     player_names = list(comparison_data.keys())
@@ -453,6 +602,33 @@ def export_comparison(comparison_info, format_type):
             filename,
             format=format_type
         )
+
+        st.success(f"✅ Exported to: `{filepath}`")
+
+    except Exception as e:
+        st.error(f"Export failed: {str(e)}")
+
+
+def export_game_logs_comparison(comparison_info, format_type):
+    """Export game logs comparison data."""
+    try:
+        exporter = st.session_state.exporter
+        year = comparison_info['year']
+        game_logs_data = comparison_info['data']
+
+        # Combine all game logs with player identifier
+        all_logs = []
+        for player_name, logs in game_logs_data.items():
+            for log in logs:
+                log_copy = {'player': player_name, 'season': year, **log}
+                all_logs.append(log_copy)
+
+        filename = f"game_logs_comparison_{year}"
+
+        if format_type.lower() == 'json':
+            filepath = exporter.export_to_json(all_logs, filename)
+        else:
+            filepath = exporter.export_to_csv(all_logs, filename)
 
         st.success(f"✅ Exported to: `{filepath}`")
 

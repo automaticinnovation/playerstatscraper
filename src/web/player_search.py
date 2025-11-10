@@ -12,8 +12,12 @@ def show():
     st.markdown('<div class="main-header">🏈 Player Search</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Search for NFL and MLB player statistics</div>', unsafe_allow_html=True)
 
-    # Sport selection
-    col1, col2 = st.columns([1, 3])
+    # Initialize selected player in session state
+    if 'selected_player' not in st.session_state:
+        st.session_state.selected_player = None
+
+    # Sport selection and player search in one row
+    col1, col2, col3 = st.columns([1, 3, 1])
 
     with col1:
         sport = st.selectbox(
@@ -24,68 +28,64 @@ def show():
         )
 
     with col2:
+        # Use on_change to trigger search on Enter
         player_name = st.text_input(
             "Enter Player Name",
             placeholder="e.g., Patrick Mahomes, Mike Trout",
-            key="player_name_input"
+            key="player_name_input",
         )
 
-    # Search button
-    if st.button("🔍 Search Player", type="primary", use_container_width=True):
-        if not player_name:
-            st.error("Please enter a player name")
-        else:
-            with st.spinner(f"Searching for {player_name}..."):
-                scraper = st.session_state.nfl_scraper if sport == "NFL" else st.session_state.mlb_scraper
-                results = scraper.search_player(player_name)
+    with col3:
+        st.markdown("&nbsp;")  # Spacing
+        search_button = st.button("🔍 Search", type="primary", use_container_width=True)
 
-                if not results:
-                    st.warning(f"No players found matching '{player_name}'")
-                    st.session_state.search_results = None
-                else:
-                    st.session_state.search_results = results
-                    st.session_state.selected_sport = sport
-                    st.success(f"Found {len(results)} player(s)")
+    # Search when button clicked or Enter pressed
+    if search_button and player_name:
+        with st.spinner(f"Searching for {player_name}..."):
+            scraper = st.session_state.nfl_scraper if sport == "NFL" else st.session_state.mlb_scraper
+            results = scraper.search_player(player_name)
 
-    # Display search results
-    if st.session_state.get('search_results'):
-        st.markdown("---")
-        st.subheader("Search Results")
+            if not results:
+                st.warning(f"No players found matching '{player_name}'")
+                st.session_state.selected_player = None
+            elif len(results) == 1:
+                # Auto-select if only one result
+                st.session_state.selected_player = results[0]
+                st.session_state.selected_sport = sport
+                st.success(f"Found: {results[0]['name']}")
+            else:
+                # Multiple results - show selector
+                st.session_state.search_results = results
+                st.session_state.selected_sport = sport
+                st.session_state.selected_player = None
 
+    # Display search results selector only if multiple results
+    if st.session_state.get('search_results') and not st.session_state.get('selected_player'):
         results = st.session_state.search_results
 
-        # Display results as cards
-        for i, player in enumerate(results):
-            with st.expander(
-                f"{i+1}. {player.get('name', 'Unknown')} - {player.get('position', 'N/A')} ({player.get('years', 'N/A')})",
-                expanded=(len(results) == 1)
-            ):
-                col1, col2, col3 = st.columns(3)
+        st.markdown("---")
+        st.info(f"Found {len(results)} players - Select one:")
 
-                with col1:
-                    st.markdown("**Player Information**")
-                    st.write(f"**Name:** {player.get('name', 'N/A')}")
-                    st.write(f"**Position:** {player.get('position', 'N/A')}")
-                    st.write(f"**Years Active:** {player.get('years', 'N/A')}")
+        # Create a clean dropdown
+        player_options = {
+            f"{p['name']} - {p.get('position', 'N/A')} ({p.get('years', 'N/A')})": p
+            for p in results
+        }
 
-                with col2:
-                    st.markdown("**Teams**")
-                    teams = player.get('teams', [])
-                    if teams:
-                        for team in teams:
-                            st.write(f"• {team}")
-                    else:
-                        st.write("N/A")
+        selected_display = st.selectbox(
+            "Select Player",
+            options=list(player_options.keys()),
+            key="player_selector"
+        )
 
-                with col3:
-                    st.markdown("**Actions**")
-                    if st.button(f"📊 View Stats", key=f"view_stats_{i}"):
-                        st.session_state.selected_player = player
-                        st.rerun()
+        if st.button("✓ Confirm Selection", type="primary"):
+            st.session_state.selected_player = player_options[selected_display]
+            st.session_state.search_results = None
+            st.rerun()
 
-        # If a player is selected, show stats options
-        if st.session_state.get('selected_player'):
-            show_player_stats(st.session_state.selected_player, st.session_state.selected_sport)
+    # If a player is selected, show stats options
+    if st.session_state.get('selected_player'):
+        show_player_stats(st.session_state.selected_player, st.session_state.selected_sport)
 
 
 def show_player_stats(player, sport):
@@ -97,10 +97,13 @@ def show_player_stats(player, sport):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
+        # Default to Game Logs
+        stat_options = ["Game Logs", "Season Stats", "Career Stats", "Playoff Stats"] if sport == "MLB" else ["Game Logs", "Season Stats", "Career Stats"]
         stat_type = st.selectbox(
             "Stat Type",
-            ["Season Stats", "Career Stats", "Game Logs", "Playoff Stats"] if sport == "MLB" else ["Season Stats", "Career Stats", "Game Logs"],
-            key="stat_type_select"
+            stat_options,
+            key="stat_type_select",
+            index=0  # Default to Game Logs
         )
 
     with col2:

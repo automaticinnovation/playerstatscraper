@@ -219,14 +219,45 @@ class DataExporter:
             safe_name = player_name.replace(' ', '_').lower()
             filename = f"{safe_name}_gamelogs_{year}"
 
-        # Add metadata to each game log
+        # Columns to exclude from export (case-insensitive matching)
+        excluded_columns = [
+            'player_game_num',
+            'game_num',
+            'rk',  # Rank/game number
+            'team_game',
+            'game_location',
+            'game_location_indicator',
+            'snap_counts_defense',
+            'snap_counts_def_pct',
+            'snap_counts_special_teams',
+            'snap_counts_st_pct',
+            'snap_counts_offense',
+            'snap_counts_off_pct',
+            'def_snaps',
+            'def_snap_pct',
+            'st_snaps',
+            'st_snap_pct'
+        ]
+
+        # Add metadata to each game log and filter out unwanted columns
         enriched_logs = []
         for log in game_logs:
             enriched_log = {
                 'player': player_name,
-                'season': year,
-                **log
+                'season': year
             }
+            # Add log data, excluding unwanted columns
+            for key, value in log.items():
+                # Normalize key for comparison (lowercase, no spaces/underscores)
+                normalized_key = key.lower().replace(' ', '').replace('_', '')
+                # Check if key should be excluded
+                should_exclude = any(
+                    excl.lower().replace('_', '') in normalized_key
+                    for excl in excluded_columns
+                )
+                if not should_exclude:
+                    enriched_log[key] = value
+
             enriched_logs.append(enriched_log)
 
         if format.lower() == 'json':
