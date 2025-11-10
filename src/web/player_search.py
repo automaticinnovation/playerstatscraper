@@ -321,6 +321,41 @@ def display_game_logs(game_logs, player_name, year):
     # Convert to DataFrame
     df = pd.DataFrame(game_logs)
 
+    # Columns to exclude from display (case-insensitive matching)
+    excluded_columns = [
+        'player_game_num',
+        'game_num',
+        'rk',
+        'team_game',
+        'game_location',
+        'game_location_indicator',
+        'snap_counts_defense',
+        'snap_counts_def_pct',
+        'snap_counts_special_teams',
+        'snap_counts_st_pct',
+        'snap_counts_offense',
+        'snap_counts_off_pct',
+        'def_snaps',
+        'def_snap_pct',
+        'st_snaps',
+        'st_snap_pct'
+    ]
+
+    # Filter out unwanted columns
+    cols_to_keep = []
+    for col in df.columns:
+        # Normalize column for comparison
+        normalized_col = col.lower().replace(' ', '').replace('_', '')
+        # Check if column should be excluded
+        should_exclude = any(
+            excl.lower().replace('_', '') in normalized_col
+            for excl in excluded_columns
+        )
+        if not should_exclude:
+            cols_to_keep.append(col)
+
+    df = df[cols_to_keep]
+
     # Format column names
     df.columns = [col.replace('_', ' ').title() for col in df.columns]
 
