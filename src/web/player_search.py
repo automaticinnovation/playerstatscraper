@@ -356,6 +356,28 @@ def display_game_logs(game_logs, player_name, year):
 
     df = df[cols_to_keep]
 
+    # Separate metadata columns from stat columns
+    metadata_columns = []
+    stat_columns = []
+
+    metadata_keywords = ['week', 'date', 'team', 'tm', 'opp', 'opponent', 'gs', 'started', 'starter']
+
+    for col in df.columns:
+        col_lower = col.lower()
+        # Check if this is a metadata column
+        is_metadata = any(keyword in col_lower for keyword in metadata_keywords)
+        # But exclude columns that are actual stats (e.g., "team_score")
+        is_stat_keyword = any(stat in col_lower for stat in ['score', 'result', 'att', 'cmp', 'yds', 'td', 'int', 'rating', 'rush', 'rec', 'tgt', 'target'])
+
+        if is_metadata and not is_stat_keyword:
+            metadata_columns.append(col)
+        else:
+            stat_columns.append(col)
+
+    # Reorder: stats first, then metadata
+    reordered_columns = stat_columns + metadata_columns
+    df = df[reordered_columns]
+
     # Format column names
     df.columns = [col.replace('_', ' ').title() for col in df.columns]
 
